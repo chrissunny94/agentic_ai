@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agentic Physics Compiler</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            background-color: #f4f4f9;
+            color: #333;
+            max-width: 1000px;
+            margin: 40px auto;
+            padding: 20px;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+            padding: 15px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            resize: vertical;
+            box-sizing: border-box;
+            margin-bottom: 15px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        button:hover { background-color: #0056b3; }
+        button:disabled { background-color: #a0c4ff; cursor: not-allowed; }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+        pre {
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 14px;
+            line-height: 1.5;
+            min-height: 300px;
+            white-space: pre-wrap;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Natural Language to C++ Physics Simulator</h2>
+        <p>Describe the simulation (e.g., "Simulate the trajectory of a projectile with air resistance over 10 seconds"):</p>
+        
+        <textarea id="promptInput" placeholder="Enter your physics constraints here..."></textarea>
+        <button id="generateBtn" onclick="generateCode()">Generate & Compile</button>
+
+        <div class="grid">
+            <div>
+                <h3>Generated Source Code:</h3>
+                <pre><code id="codeOutput">// Your C++ code will appear here...</code></pre>
+            </div>
+            <div>
+                <h3>Simulation Execution Output:</h3>
+                <pre><code id="simOutput">// stdout from sim.exe will appear here...</code></pre>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function generateCode() {
+            const prompt = document.getElementById('promptInput').value;
+            const btn = document.getElementById('generateBtn');
+            const codeOut = document.getElementById('codeOutput');
+            const simOut = document.getElementById('simOutput');
+
+            if (!prompt) return;
+
+            btn.disabled = true;
+            btn.innerText = 'Agent is coding & compiling...';
+            codeOut.innerText = 'Reasoning...';
+            simOut.innerText = 'Waiting for successful build...';
+
+            try {
+                const response = await fetch('/generate', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: prompt })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    codeOut.innerText = data.code;
+                    simOut.innerText = data.output ? 
+                        `[Success on attempt ${data.attempts}]\n\n${data.output}` : 
+                        "No output generated.";
+                } else {
+                    codeOut.innerText = data.code || "No code returned.";
+                    simOut.innerText = `[FAILED]\n\n${data.error}\n\nLast Log:\n${data.last_log}`;
+                }
+            } catch (err) {
+                codeOut.innerText = 'Failed to connect to the backend.';
+            } finally {
+                btn.disabled = false;
+                btn.innerText = 'Generate & Compile';
+            }
+        }
+    </script>
+</body>
+</html>
