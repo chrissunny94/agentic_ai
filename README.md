@@ -8,6 +8,8 @@ Building a trading bot is a classic engineer side project, but doing it with an 
 
 ### 2. Natural Language to Physics Simulator (The Compute Heavyweight)
 
+![](./ARCHITECTURE/physics_sim.png)
+
 Take advantage of high-performance C++ and Python by building an agent that bridges the gap between natural language and complex mathematical simulations.
 
 * *The Concept:* You build an Agentic AI where a user can type, "Simulate the thermodynamic cooling of a multi-layer titanium cylinder in a vacuum," and the agent autonomously writes the code to simulate it, runs it, and returns the visualization.

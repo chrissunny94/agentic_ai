@@ -1,1 +1,9 @@
-physic_sim\build
+physic_sim\build\*
+physic_sim/build
+
+# Ignore C++ build artifacts
+physic_sim/build/
+
+# Optional: Ignore Python artifacts while you're at it
+__pycache__/
+*.py[cod]
