@@ -28,27 +28,36 @@ MODELS = {
     "ollama":  os.environ.get("OLLAMA_MODEL", "llama3.1"),  # override via env var
 }
 
-# --- Shared system prompt ---
-SYSTEM_INSTRUCTION = (
-    "You are an expert physics engine developer. Generate ONLY the code for main.cpp.\n"
-    "Pre-existing API available via #include \"animation.hpp\" and \"plots.hpp\":\n"
-    "  Animator anim; anim.record_frame(t, x, y);  // exactly 3 args: time, x, y\n"
-    "  Plotter plot;  plot.add_data(\"Label\", x, y);\n\n"
-    "At the end of main(), call anim.emit_json() and plot.emit_json().\n"
-    "IMPORTANT CONSTRAINTS:\n"
-    "  - Do NOT use nlohmann/json or any third-party libraries.\n"
-    "  - Do NOT use std::filesystem.\n"
-    "  - Only use standard headers: iostream, vector, cmath, string, iomanip, sstream.\n"
-    "  - animation.hpp and plots.hpp handle all JSON output — do not re-implement it.\n"
-    "  - Return ONLY raw C++ code inside a single ```cpp ... ``` block. No prose."
-)
+# --- Project memory (loaded once at startup, hot-reloaded per request) ---
+MEMORY_FILE = os.path.join(os.path.dirname(__file__), "memory.md")
+
+def load_memory() -> str:
+    """Load memory.md if it exists. Returns empty string if missing."""
+    if os.path.exists(MEMORY_FILE):
+        with open(MEMORY_FILE, "r") as f:
+            return f.read().strip()
+    return ""
+
+def build_system_instruction() -> str:
+    """Build the full system prompt, always re-reading memory.md so edits take effect."""
+    memory = load_memory()
+    base = (
+        "You are an expert physics engine developer. Generate ONLY the code for main.cpp.\n"
+        "Return ONLY raw C++ code inside a single ```cpp ... ``` block. No prose, no explanation.\n\n"
+    )
+    if memory:
+        base += f"PROJECT FACTS — treat these as ground truth, never contradict them:\n{memory}\n"
+    return base
+
+# Build once at startup (also rebuilt per-request to pick up memory.md edits)
+SYSTEM_INSTRUCTION = build_system_instruction()
 
 
 # ---------------------------------------------------------------------------
 # LLM helpers
 # ---------------------------------------------------------------------------
 
-def call_llm(provider: str, messages: list[dict]) -> str:
+def call_llm(provider: str, messages: list[dict], system_instruction: str) -> str:
     """
     Unified LLM call. messages = [{"role": "user"|"assistant", "content": "..."}]
     Returns the raw text response.
@@ -56,10 +65,7 @@ def call_llm(provider: str, messages: list[dict]) -> str:
     model = MODELS[provider]
 
     if provider == "gemini":
-        # Gemini doesn't support a true system role in generate_content,
-        # so we prepend the system instruction to the first user message.
         gemini_model = genai.GenerativeModel(model)
-        # Build a single prompt from the message history
         prompt = "\n\n".join(
             f"{'User' if m['role'] == 'user' else 'Assistant'}: {m['content']}"
             for m in messages
@@ -71,7 +77,7 @@ def call_llm(provider: str, messages: list[dict]) -> str:
         client = openai_client if provider == "chatgpt" else \
                  xai_client    if provider == "grok"    else \
                  ollama_client
-        openai_messages = [{"role": "system", "content": SYSTEM_INSTRUCTION}] + messages
+        openai_messages = [{"role": "system", "content": system_instruction}] + messages
         response = client.chat.completions.create(
             model=model,
             messages=openai_messages,
@@ -79,11 +85,10 @@ def call_llm(provider: str, messages: list[dict]) -> str:
         return response.choices[0].message.content
 
     elif provider == "claude":
-        # Anthropic uses a separate system param
         response = anthropic_client.messages.create(
             model=model,
             max_tokens=8096,
-            system=SYSTEM_INSTRUCTION,
+            system=system_instruction,
             messages=messages,
         )
         return response.content[0].text
@@ -188,6 +193,21 @@ def compile_and_run(cpp_code: str, src_dir="src", build_dir="build", skip_config
 # Routes
 # ---------------------------------------------------------------------------
 
+@app.route('/memory', methods=['GET'])
+def get_memory():
+    """Returns the current contents of memory.md."""
+    return jsonify({'memory': load_memory(), 'path': MEMORY_FILE})
+
+
+@app.route('/memory', methods=['POST'])
+def update_memory():
+    """Overwrites memory.md with the posted content."""
+    content = request.json.get('memory', '')
+    with open(MEMORY_FILE, 'w') as f:
+        f.write(content)
+    return jsonify({'status': 'saved', 'chars': len(content)})
+
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -229,16 +249,19 @@ def generate_code():
         if ollama_model:
             MODELS["ollama"] = ollama_model
 
+    # Re-read memory.md on every request — edits take effect without restarting
+    system_instruction = build_system_instruction()
+
     try:
-        # Initial generation — inject system instruction into first user message for Gemini
+        # Initial generation
         first_msg = (
-            f"{SYSTEM_INSTRUCTION}\n\nUser: {user_prompt}"
+            f"{system_instruction}\n\nUser: {user_prompt}"
             if provider == "gemini"
             else user_prompt
         )
         messages = [{"role": "user", "content": first_msg}]
 
-        raw      = call_llm(provider, messages)
+        raw      = call_llm(provider, messages, system_instruction)
         current_code = clean_llm_output(raw)
         messages.append({"role": "assistant", "content": current_code})
 
@@ -254,17 +277,17 @@ def generate_code():
                     'model':    provider,
                 })
 
-            # Build fix message and append to history
+            # Re-inject rules + full history so the model never forgets constraints
             fix_msg = (
+                f"RULES REMINDER:\n{system_instruction}\n\n"
                 f"The code failed at the {result['phase']} phase.\n"
                 f"Error:\n{result['log']}\n\n"
                 f"Failing code:\n```cpp\n{current_code}\n```\n\n"
-                f"Fix ONLY the error. Keep anim.record_frame(t, x, y) with exactly 3 args. "
-                f"Keep anim.emit_json() and plot.emit_json(). "
+                f"Fix ONLY the error above. Do not change anything else. "
                 f"Return ONLY a single ```cpp ... ``` block."
             )
             messages.append({"role": "user",      "content": fix_msg})
-            raw          = call_llm(provider, messages)
+            raw          = call_llm(provider, messages, system_instruction)
             current_code = clean_llm_output(raw)
             messages.append({"role": "assistant", "content": current_code})
 
