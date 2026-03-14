@@ -1,20 +1,63 @@
 let chartInstance = null;
 let animationId = null;
 
+// Populate model selector on load
+window.addEventListener('DOMContentLoaded', async () => {
+  try {
+    const res = await fetch('/models');
+    const models = await res.json();
+    const sel = document.getElementById('modelSelect');
+    sel.innerHTML = models.map(m =>
+      `<option value="${m}">${m.charAt(0).toUpperCase() + m.slice(1)}</option>`
+    ).join('');
+    sel.addEventListener('change', onModelChange);
+    onModelChange(); // run once on load
+  } catch (e) {
+    console.warn('Could not load model list:', e);
+  }
+});
+
+async function onModelChange() {
+  const provider = document.getElementById('modelSelect').value;
+  const wrap = document.getElementById('ollamaModelWrap');
+  if (provider !== 'ollama') { wrap.style.display = 'none'; return; }
+
+  wrap.style.display = 'block';
+  const ollamaSel = document.getElementById('ollamaModelSelect');
+  ollamaSel.innerHTML = '<option>loading...</option>';
+  try {
+    const res  = await fetch('/ollama-models');
+    const data = await res.json();
+    if (data.available.length === 0) {
+      ollamaSel.innerHTML = '<option value="">no models found</option>';
+    } else {
+      ollamaSel.innerHTML = data.available.map(m =>
+        `<option value="${m}" ${m === data.current ? 'selected' : ''}>${m}</option>`
+      ).join('');
+    }
+  } catch (e) {
+    ollamaSel.innerHTML = '<option value="llama3.1">llama3.1</option>';
+  }
+}
+
 function setStatus(state, text) {
   document.getElementById('statusDot').className = 'status-dot ' + state;
   document.getElementById('statusText').textContent = text;
 }
 
 async function generateCode() {
-  const prompt = document.getElementById('promptInput').value.trim();
-  const btn = document.getElementById('generateBtn');
+  const prompt      = document.getElementById('promptInput').value.trim();
+  const provider    = document.getElementById('modelSelect').value;
+  const ollamaSel   = document.getElementById('ollamaModelSelect');
+  const ollamaModel = (provider === 'ollama' && ollamaSel.value) ? ollamaSel.value : null;
+  const btn         = document.getElementById('generateBtn');
   if (!prompt) return;
 
   btn.disabled = true;
   btn.innerHTML = 'Working<br>...';
   cancelAnimationFrame(animationId);
-  setStatus('active', 'agent running — compiling simulation...');
+  const displayName = ollamaModel ? `ollama/${ollamaModel}` : provider;
+  setStatus('active', `${displayName} — compiling simulation...`);
 
   // Reset UI
   document.getElementById('animationCanvas').style.display = 'none';
@@ -28,14 +71,14 @@ async function generateCode() {
     const response = await fetch('/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt })
+      body: JSON.stringify({ prompt, model: provider, ollama_model: ollamaModel })
     });
 
     const data = await response.json();
     document.getElementById('codeOutput').textContent = data.code || '// no code returned';
 
     if (response.ok) {
-      setStatus('success', `done — compiled in ${data.attempts} attempt${data.attempts > 1 ? 's' : ''}`);
+      setStatus('success', `${data.model || displayName} — compiled in ${data.attempts} attempt${data.attempts > 1 ? 's' : ''}`);
       const parsed = typeof data.output === 'object' ? data.output : null;
       const rawOutput = parsed ? parsed.text : data.output;
 

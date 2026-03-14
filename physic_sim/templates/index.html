@@ -24,7 +24,14 @@
       <label class="input-label" for="promptInput">_ describe your simulation</label>
       <textarea id="promptInput" placeholder="e.g. Simulate a spring-mass system with damping coefficient 0.3..."></textarea>
     </div>
+    <div style="display:flex;flex-direction:column;gap:8px">
+    <select id="modelSelect" style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--muted);font-family:var(--mono);font-size:11px;letter-spacing:0.1em;padding:8px 12px;cursor:pointer;outline:none;text-transform:uppercase" style="background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--muted);font-family:var(--mono);font-size:11px;letter-spacing:0.1em;padding:8px 12px;cursor:pointer;outline:none;text-transform:uppercase"></select>
+    <div id="ollamaModelWrap" style="display:none">
+      <label style="font-size:10px;letter-spacing:0.15em;color:var(--muted);text-transform:uppercase;display:block;margin-bottom:4px">_ local model</label>
+      <select id="ollamaModelSelect" style="width:100%;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--accent);font-family:var(--mono);font-size:11px;padding:8px 12px;cursor:pointer;outline:none"></select>
+    </div>
     <button id="generateBtn" onclick="generateCode()">Run<br>Agent</button>
+  </div>
   </div>
 
   <div class="status-bar">
