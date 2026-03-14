@@ -16,7 +16,6 @@ genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 openai_client    = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 xai_client       = OpenAI(api_key=os.environ.get("XAI_API_KEY"), base_url="https://api.x.ai/v1")
 anthropic_client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
-# Ollama runs locally — no API key needed
 ollama_client    = OpenAI(api_key="ollama", base_url="http://localhost:11434/v1")
 
 # --- Model registry ---
@@ -25,10 +24,10 @@ MODELS = {
     "chatgpt": "gpt-4o",
     "grok":    "grok-3-fast",
     "claude":  "claude-sonnet-4-6",
-    "ollama":  os.environ.get("OLLAMA_MODEL", "llama3.1"),  # override via env var
+    "ollama":  os.environ.get("OLLAMA_MODEL", "qwen2.5-coder:14b"),
 }
 
-# --- Project memory (loaded once at startup, hot-reloaded per request) ---
+# --- Project memory ---
 MEMORY_FILE = os.path.join(os.path.dirname(__file__), "memory.md")
 
 def load_memory() -> str:
@@ -49,8 +48,13 @@ def build_system_instruction() -> str:
         base += f"PROJECT FACTS — treat these as ground truth, never contradict them:\n{memory}\n"
     return base
 
-# Build once at startup (also rebuilt per-request to pick up memory.md edits)
+# Startup confirmation
 SYSTEM_INSTRUCTION = build_system_instruction()
+_memory = load_memory()
+if _memory:
+    print(f"[memory] Loaded {len(_memory)} chars from {MEMORY_FILE}")
+else:
+    print(f"[memory] WARNING — memory.md not found at {MEMORY_FILE}, LLM has no project facts")
 
 
 # ---------------------------------------------------------------------------
@@ -60,17 +64,20 @@ SYSTEM_INSTRUCTION = build_system_instruction()
 def call_llm(provider: str, messages: list[dict], system_instruction: str) -> str:
     """
     Unified LLM call. messages = [{"role": "user"|"assistant", "content": "..."}]
+    system_instruction is always injected correctly for every provider.
     Returns the raw text response.
     """
     model = MODELS[provider]
 
     if provider == "gemini":
         gemini_model = genai.GenerativeModel(model)
-        prompt = "\n\n".join(
+        # Gemini has no system role — prepend system instruction explicitly on every call
+        prompt_parts = [f"SYSTEM: {system_instruction}\n"]
+        prompt_parts += [
             f"{'User' if m['role'] == 'user' else 'Assistant'}: {m['content']}"
             for m in messages
-        )
-        response = gemini_model.generate_content(prompt)
+        ]
+        response = gemini_model.generate_content("\n\n".join(prompt_parts))
         return response.text
 
     elif provider in ("chatgpt", "grok", "ollama"):
@@ -253,15 +260,11 @@ def generate_code():
     system_instruction = build_system_instruction()
 
     try:
-        # Initial generation
-        first_msg = (
-            f"{system_instruction}\n\nUser: {user_prompt}"
-            if provider == "gemini"
-            else user_prompt
-        )
-        messages = [{"role": "user", "content": first_msg}]
+        # All providers: first message is just the user prompt.
+        # system_instruction is injected inside call_llm per provider's native mechanism.
+        messages = [{"role": "user", "content": user_prompt}]
 
-        raw      = call_llm(provider, messages, system_instruction)
+        raw          = call_llm(provider, messages, system_instruction)
         current_code = clean_llm_output(raw)
         messages.append({"role": "assistant", "content": current_code})
 
