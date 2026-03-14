@@ -9,11 +9,27 @@ app = Flask(__name__)
 # Use the latest stable model
 genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
+# def clean_llm_output(text):
+#     """Removes markdown code blocks if the LLM includes them."""
+#     text = re.sub(r'^```(cpp|c\+\+)?\n', '', text, flags=re.MULTILINE)
+#     text = re.sub(r'```$', '', text, flags=re.MULTILINE)
+#     return text.strip()
+
+
 def clean_llm_output(text):
-    """Removes markdown code blocks if the LLM includes them."""
-    text = re.sub(r'^```(cpp|c\+\+)?\n', '', text, flags=re.MULTILINE)
-    text = re.sub(r'```$', '', text, flags=re.MULTILINE)
-    return text.strip()
+    """Extract only the C++ code — strip everything outside fences."""
+    # Try to find a fenced code block first
+    match = re.search(r'```(?:cpp|c\+\+)?\n([\s\S]*?)```', text, re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    
+    # Fallback: if no fences, strip lines that look like markdown prose
+    lines = text.split('\n')
+    code_lines = [
+        l for l in lines
+        if not re.match(r'^(\s*(#{1,6}|\*{1,2}|>\s|[-*]\s|\d+\.))', l)
+    ]
+    return '\n'.join(code_lines).strip()
 
 def compile_and_run(cpp_code, src_dir="src", build_dir="build"):
     """Writes dynamic code and builds the full project."""

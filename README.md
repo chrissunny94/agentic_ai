@@ -1,3 +1,15 @@
+## SYSTEH SETUP
+
+```
+./setup_system.sh
+```
+
+https://aistudio.google.com/projects
+
+```
+export GEMINI_API_KEY=<downloaded Key from google ai studio>
+```
+
 ### 1. The Agentic Quantitative Trading Swarm (The Finance Play)
 
 Building a trading bot is a classic engineer side project, but doing it with an Agentic AI swarm makes it a modern, complex distributed systems problem.

@@ -1,12 +1,14 @@
 #pragma once
-#include <vector>
 #include <string>
+#include <vector>
+#include <map>        // ADD THIS
+
+struct Point { double x; double y; };   // ADD THIS
 
 class Plotter {
 public:
     void add_data(std::string label, double x, double y);
-    void emit_json(); // Prints the data in JSON format at the end
+    void emit_json();
 private:
-    struct Point { double x, y; };
     std::map<std::string, std::vector<Point>> data;
 };

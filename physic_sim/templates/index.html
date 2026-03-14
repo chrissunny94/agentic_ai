@@ -1,143 +1,92 @@
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<style>
-    /* ... existing styles ... */
-    .viz-container { display: flex; flex-direction: column; gap: 20px; margin-top: 20px; }
-    canvas { background: #fff; border: 1px solid #ddd; border-radius: 8px; width: 100%; max-height: 400px; }
-    .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
-    .success { background: #d4edda; color: #155724; }
-    .error { background: #f8d7da; color: #721c24; }
-</style>
-
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PhysSim — Agentic Physics Engine</title>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
 <body>
-    <div class="container">
-        <h2>Agentic Physics Simulator</h2>
-        <textarea id="promptInput" placeholder="Try: 'Simulate a spring-mass system with damping'"></textarea>
-        <button id="generateBtn" onclick="generateCode()">Generate & Compile</button>
 
-        <div class="viz-container">
-            <div>
-                <h3>1. Animation</h3>
-                <canvas id="animationCanvas"></canvas>
-            </div>
+<div class="shell">
 
-            <div>
-                <h3>2. Plots</h3>
-                <canvas id="plotCanvas"></canvas>
-            </div>
+  <header>
+    <div class="logo">
+      <span>// AGENTIC</span>
+      PhysSim
+    </div>
+    <div class="version">v0.1 · Gemini-powered</div>
+  </header>
 
-            <div class="grid">
-                <div>
-                    <h3>Generated C++</h3>
-                    <pre><code id="codeOutput"></code></pre>
-                </div>
-                <div>
-                    <h3>Simulation Logs</h3>
-                    <pre><code id="simOutput"></code></pre>
-                </div>
-            </div>
+  <div class="input-section">
+    <div class="input-wrap">
+      <label class="input-label" for="promptInput">_ describe your simulation</label>
+      <textarea id="promptInput" placeholder="e.g. Simulate a spring-mass system with damping coefficient 0.3..."></textarea>
+    </div>
+    <button id="generateBtn" onclick="generateCode()">Run<br>Agent</button>
+  </div>
+
+  <div class="status-bar">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">awaiting input</span>
+  </div>
+
+  <div class="viz-grid">
+    <div class="panel" id="animPanel">
+      <div class="panel-header">
+        <span class="panel-title">Animation</span>
+        <span class="panel-tag tag-anim">canvas</span>
+      </div>
+      <div class="panel-body" style="padding:12px">
+        <canvas id="animationCanvas"></canvas>
+        <div class="empty" id="animEmpty">
+          <div class="empty-icon">◎</div>
+          <span>no frames yet</span>
         </div>
+      </div>
     </div>
 
-    <script>
-        let chartInstance = null;
-        let animationId = null;
+    <div class="panel" id="plotPanel">
+      <div class="panel-header">
+        <span class="panel-title">Plot</span>
+        <span class="panel-tag tag-plot">chart.js</span>
+      </div>
+      <div class="panel-body" style="padding:12px">
+        <canvas id="plotCanvas" style="display:none"></canvas>
+        <div class="empty" id="plotEmpty">
+          <div class="empty-icon">∿</div>
+          <span>no data yet</span>
+        </div>
+      </div>
+    </div>
+  </div>
 
-        async function generateCode() {
-            const prompt = document.getElementById('promptInput').value;
-            const btn = document.getElementById('generateBtn');
-            if (!prompt) return;
+  <div class="code-grid">
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">Generated C++</span>
+        <span class="panel-tag tag-code">main.cpp</span>
+      </div>
+      <div class="panel-body">
+        <pre><code id="codeOutput">// agent output will appear here</code></pre>
+      </div>
+    </div>
 
-            // UI Reset
-            btn.disabled = true;
-            btn.innerText = 'Agent Processing...';
-            cancelAnimationFrame(animationId);
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-title">Simulation Logs</span>
+        <span class="panel-tag tag-log">stdout</span>
+      </div>
+      <div class="panel-body">
+        <pre><code id="simOutput">// run a simulation to see logs</code></pre>
+      </div>
+    </div>
+  </div>
 
-            try {
-                const response = await fetch('/generate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: prompt })
-                });
+</div>
 
-                const data = await response.json();
-                document.getElementById('codeOutput').innerText = data.code || "";
-                
-                if (response.ok) {
-                    const rawOutput = data.output;
-                    document.getElementById('simOutput').innerText = `[Attempts: ${data.attempts}]\n\n` + rawOutput;
-                    parseAndRender(rawOutput);
-                } else {
-                    document.getElementById('simOutput').innerText = `[FAILED]\n${data.error}\n\n${data.last_log}`;
-                }
-            } catch (err) {
-                console.error(err);
-            } finally {
-                btn.disabled = false;
-                btn.innerText = 'Generate & Compile';
-            }
-        }
-
-        function parseAndRender(text) {
-            // 1. Parse Plots
-            const plotMatch = text.match(/---PLOT_DATA---\n([\s\S]*?)\n---END_PLOT---/);
-            if (plotMatch) {
-                const plotData = JSON.parse(plotMatch[1]);
-                renderChart(plotData);
-            }
-
-            // 2. Parse Animation
-            const animMatch = text.match(/---ANIMATION_DATA---\n([\s\S]*?)\n---END_ANIMATION---/);
-            if (animMatch) {
-                const animData = JSON.parse(animMatch[1]);
-                startAnimation(animData);
-            }
-        }
-
-        function renderChart(data) {
-            const ctx = document.getElementById('plotCanvas').getContext('2d');
-            if (chartInstance) chartInstance.destroy();
-
-            const datasets = Object.keys(data).map(label => ({
-                label: label,
-                data: data[label].map(p => ({ x: p[0], y: p[1] })),
-                borderColor: '#' + Math.floor(Math.random()*16777215).toString(16),
-                showLine: true
-            }));
-
-            chartInstance = new Chart(ctx, {
-                type: 'scatter',
-                data: { datasets },
-                options: { responsive: true, scales: { x: { type: 'linear' } } }
-            });
-        }
-
-        function startAnimation(frames) {
-            const canvas = document.getElementById('animationCanvas');
-            const ctx = canvas.getContext('2d');
-            let frameIdx = 0;
-
-            function draw() {
-                const frame = frames[frameIdx];
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
-                
-                // Draw ground/anchor
-                ctx.fillStyle = "#333";
-                ctx.fillRect(0, 50, canvas.width, 2);
-
-                // Draw Object (Dynamic based on sim)
-                // We map sim coordinates to canvas coordinates
-                const centerX = canvas.width / 2 + (frame.x * 50);
-                const centerY = 150 + (frame.y * 50);
-
-                ctx.beginPath();
-                ctx.arc(centerX, centerY, 20, 0, Math.PI * 2);
-                ctx.fillStyle = "#007bff";
-                ctx.fill();
-
-                frameIdx = (frameIdx + 1) % frames.length;
-                animationId = requestAnimationFrame(draw);
-            }
-            draw();
-        }
-    </script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="{{ url_for('static', filename='main.js') }}"></script>
 </body>
+</html>
